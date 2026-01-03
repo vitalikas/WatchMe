@@ -1,8 +1,7 @@
 package lt.vitalijus.watchme.di
 
+import lt.vitalijus.watchme.data.repository.InMemoryVideoCache
 import lt.vitalijus.watchme.data.repository.KtorVideoRemoteDataSource
-import lt.vitalijus.watchme.data.repository.VideoCache
-import lt.vitalijus.watchme.data.repository.VideoRemoteDataSource
 import lt.vitalijus.watchme.data.repository.VideoRepositoryImpl
 import lt.vitalijus.watchme.domain.repository.VideoRepository
 import lt.vitalijus.watchme.domain.usecase.FilterVideosByCategoryUseCase
@@ -20,7 +19,7 @@ import org.koin.dsl.module
  */
 val dataModule = module {
     // Singletons - one instance shared across app
-    single { VideoCache() }
+    single { InMemoryVideoCache() }
     single { KtorVideoRemoteDataSource() }
 
     // Repository - single instance
