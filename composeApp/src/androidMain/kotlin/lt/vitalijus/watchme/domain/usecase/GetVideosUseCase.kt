@@ -16,10 +16,7 @@ import lt.vitalijus.watchme.domain.repository.VideoRepository
 class GetVideosUseCase(
     private val repository: VideoRepository
 ) {
-    /**
-     * Execute use case
-     * Returns Flow for reactive updates
-     */
+
     operator fun invoke(): Flow<List<Video>> {
         return repository.observeVideos()
     }

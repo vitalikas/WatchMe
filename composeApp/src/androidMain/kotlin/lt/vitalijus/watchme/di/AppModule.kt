@@ -18,11 +18,8 @@ import org.koin.dsl.module
  * Provides repositories and data sources
  */
 val dataModule = module {
-    // Singletons - one instance shared across app
     single { InMemoryVideoCache() }
     single { KtorVideoRemoteDataSource() }
-
-    // Repository - single instance
     single<VideoRepository> {
         VideoRepositoryImpl(
             remoteDataSource = get(),
