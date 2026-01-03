@@ -11,41 +11,36 @@ import lt.vitalijus.watchme.domain.repository.VideoRepository
  */
 class VideoRepositoryImpl(
     private val remoteDataSource: VideoRemoteDataSource,
-    private val localCache: VideoLocalDataSource
+    private val cache: VideoLocalDataSource
 ) : VideoRepository {
 
     override suspend fun getVideos(): Result<List<Video>> {
-        return try {
-            // Check cache first
-            val cached = localCache.getVideos()
-            if (cached.isNotEmpty() && !localCache.isExpired()) {
-                return Result.success(cached)
-            }
-
-            // Fetch from remote
-            val videos = remoteDataSource.fetchVideos()
-
-            // Update cache
-            localCache.saveVideos(videos)
-
-            Result.success(videos)
-        } catch (e: Exception) {
-            // Fallback to cache if network fails
-            val cached = localCache.getVideos()
-            if (cached.isNotEmpty()) {
-                Result.success(cached)
-            } else {
-                Result.failure(e)
-            }
+        val cached = cache.getVideos()
+        if (cached.isNotEmpty() && !cache.isExpired()) {
+            return Result.success(cached)
         }
+
+        return runCatchingCancellable {
+            val videos = remoteDataSource.fetchVideos()
+            cache.saveVideos(videos = videos)
+            videos
+        }
+            .recover { error ->
+                // Attempt to recover using the cache.
+                val fallbackCache = cache.getVideos()
+                fallbackCache.ifEmpty {
+                    throw error
+                }
+            }
     }
+
 
     override suspend fun getVideoById(id: String): Result<Video?> {
         return try {
-            val video = localCache.getVideoById(id)
+            val video = cache.getVideoById(id)
                 ?: remoteDataSource.fetchVideoById(id)
 
-            video?.let { localCache.saveVideo(it) }
+            video?.let { cache.saveVideo(it) }
 
             Result.success(video)
         } catch (e: Exception) {
@@ -55,7 +50,7 @@ class VideoRepositoryImpl(
 
     override fun observeVideos(): Flow<List<Video>> = flow {
         // Emit cached data immediately
-        val cached = localCache.getVideos()
+        val cached = cache.getVideos()
         if (cached.isNotEmpty()) {
             emit(cached)
         }
@@ -63,7 +58,7 @@ class VideoRepositoryImpl(
         // Fetch fresh data
         try {
             val fresh = remoteDataSource.fetchVideos()
-            localCache.saveVideos(fresh)
+            cache.saveVideos(fresh)
             emit(fresh)
         } catch (e: Exception) {
             // Already emitted cache, just log error

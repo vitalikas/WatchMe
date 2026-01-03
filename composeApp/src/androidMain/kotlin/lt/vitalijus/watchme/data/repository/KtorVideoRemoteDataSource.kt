@@ -7,6 +7,7 @@ import lt.vitalijus.watchme.model.VideoContent
 
 // Implements the remote data source contract
 class KtorVideoRemoteDataSource : VideoRemoteDataSource {
+
     override suspend fun fetchVideos(): List<Video> {
         delay(500) // Simulate network
         return SampleContent.videos.map { it.toDomainModel() }

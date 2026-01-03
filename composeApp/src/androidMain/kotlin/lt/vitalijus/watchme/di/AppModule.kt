@@ -26,7 +26,7 @@ val dataModule = module {
     single<VideoRepository> {
         VideoRepositoryImpl(
             remoteDataSource = get(),
-            localCache = get()
+            cache = get()
         )
     }
 }
