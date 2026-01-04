@@ -3,13 +3,39 @@ package lt.vitalijus.watchme.ui
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -32,9 +58,8 @@ import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import lt.vitalijus.watchme.analytics.AnalyticsEvent
 import lt.vitalijus.watchme.analytics.VideoAnalyticsTracker
-import lt.vitalijus.watchme.model.VideoContent
+import lt.vitalijus.watchme.domain.model.Video
 import lt.vitalijus.watchme.streaming.LinearAdReplacementManager
-import java.util.UUID
 
 /**
  * Video Player Screen - Second Screen
@@ -44,7 +69,7 @@ import java.util.UUID
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
-    video: VideoContent,
+    video: Video,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -54,7 +79,7 @@ fun PlayerScreen(
     var bufferingPercentage by remember { mutableStateOf(0) }
     var currentQuality by remember { mutableStateOf("Auto") }
     var error by remember { mutableStateOf<String?>(null) }
-    
+
     // Save playback position across configuration changes (fold/unfold, rotation, etc.)
     var savedPosition by rememberSaveable { mutableStateOf(0L) }
     var wasPlaying by rememberSaveable { mutableStateOf(true) }
@@ -97,11 +122,11 @@ fun PlayerScreen(
         )
 
         // Initialize DRM if present
-        if (video.drmConfig != null) {
+        if (video.hasDrm && video.drmLicenseUrl != null) {
             VideoAnalyticsTracker.trackEvent(
                 AnalyticsEvent.DrmInitialized(
                     videoId = video.id,
-                    drmScheme = video.drmConfig.scheme.name,
+                    drmScheme = "Widevine",
                     timestamp = System.currentTimeMillis()
                 )
             )
@@ -123,7 +148,7 @@ fun PlayerScreen(
                     videoId = video.id,
                     hasAds = video.hasAds
                 )
-                
+
                 // Start ad pod if found and not already playing
                 if (adPod != null && currentAdPod?.id != adPod.id) {
                     LinearAdReplacementManager.startAdPod(adPod)
@@ -136,14 +161,14 @@ fun PlayerScreen(
                         )
                     )
                 }
-                
+
                 // End ad pod if:
                 // 1. Position moved past the ad duration
                 // 2. User seeked/scrubbed outside the ad range
                 if (currentAdPod != null) {
                     val adStart = currentAdPod!!.startPosition
                     val adEnd = adStart + currentAdPod!!.duration
-                    
+
                     if (currentPosition < adStart || currentPosition > adEnd) {
                         LinearAdReplacementManager.endAdPod()
                     }
@@ -159,7 +184,7 @@ fun PlayerScreen(
             // Save current state for configuration changes (fold/unfold, rotation)
             savedPosition = exoPlayer.currentPosition
             wasPlaying = exoPlayer.isPlaying
-            
+
             val finalPosition = exoPlayer.currentPosition
             VideoAnalyticsTracker.trackEvent(
                 AnalyticsEvent.VideoPaused(
@@ -319,7 +344,7 @@ fun AdIndicatorOverlay(adPod: lt.vitalijus.watchme.streaming.AdPod, currentPosit
 }
 
 @Composable
-fun TechnicalInfoCard(video: VideoContent, quality: String, duration: Long) {
+fun TechnicalInfoCard(video: Video, quality: String, duration: Long) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -340,8 +365,10 @@ fun TechnicalInfoCard(video: VideoContent, quality: String, duration: Long) {
             InfoRow("Format", if (video.videoUrl.contains(".m3u8")) "HLS" else "DASH")
             InfoRow("Quality", quality)
             InfoRow("Duration", formatDuration(duration / 1000))
-            InfoRow("DRM", if (video.drmConfig != null) 
-                "✓ ${video.drmConfig.scheme.name}" else "None")
+            InfoRow(
+                "DRM", if (video.hasDrm)
+                    "✓ Widevine" else "None"
+            )
             InfoRow("LAR Enabled", if (video.hasAds) "✓ Yes" else "No")
         }
     }
@@ -372,7 +399,7 @@ fun InfoRow(label: String, value: String) {
 @androidx.annotation.OptIn(UnstableApi::class)
 private fun createExoPlayer(
     context: android.content.Context,
-    video: VideoContent,
+    video: Video,
     initialPosition: Long = 0L,
     playWhenReady: Boolean = true,
     onError: (String) -> Unit,
@@ -381,12 +408,12 @@ private fun createExoPlayer(
     val httpDataSourceFactory = DefaultHttpDataSource.Factory()
 
     // Configure DRM if present
-    val mediaSourceFactory = if (video.drmConfig != null) {
+    val mediaSourceFactory = if (video.hasDrm && video.drmLicenseUrl != null) {
         val drmCallback = HttpMediaDrmCallback(
-            video.drmConfig.licenseUrl,
+            video.drmLicenseUrl,
             httpDataSourceFactory
         )
-        
+
         val drmSessionManager = DefaultDrmSessionManager.Builder()
             .setUuidAndExoMediaDrmProvider(
                 C.WIDEVINE_UUID,
@@ -419,6 +446,7 @@ private fun createExoPlayer(
                         )
                     )
                 }
+
                 Player.STATE_READY -> {
                     VideoAnalyticsTracker.trackEvent(
                         AnalyticsEvent.BufferingEnded(
@@ -428,6 +456,7 @@ private fun createExoPlayer(
                         )
                     )
                 }
+
                 Player.STATE_ENDED -> {
                     VideoAnalyticsTracker.trackEvent(
                         AnalyticsEvent.VideoCompleted(
@@ -469,12 +498,12 @@ private fun createExoPlayer(
     val mediaItem = MediaItem.fromUri(video.videoUrl)
     player.setMediaItem(mediaItem)
     player.prepare()
-    
+
     // Restore playback position (for configuration changes like fold/unfold)
     if (initialPosition > 0) {
         player.seekTo(initialPosition)
     }
-    
+
     player.playWhenReady = playWhenReady
 
     return player

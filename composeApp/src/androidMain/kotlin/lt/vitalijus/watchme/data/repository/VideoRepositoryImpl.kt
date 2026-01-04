@@ -41,12 +41,13 @@ class VideoRepositoryImpl(
             cache.saveVideos(videos = videos)
             videos
         }
-            .recover { error ->
+            .recoverCatching { error ->
                 // Attempt to recover using the cache
                 val fallbackCache = cache.getVideos()
-                fallbackCache.ifEmpty {
+                if (fallbackCache.isEmpty()) {
                     throw error
                 }
+                fallbackCache
             }
     }
 

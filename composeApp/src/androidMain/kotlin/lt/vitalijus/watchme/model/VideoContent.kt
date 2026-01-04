@@ -1,34 +1,6 @@
 package lt.vitalijus.watchme.model
 
-/**
- * Represents DRM (Digital Rights Management) configuration for protected content
- * This demonstrates Widevine DRM implementation commonly used in streaming services
- */
-data class DrmConfig(
-    val licenseUrl: String,
-    val scheme: DrmScheme = DrmScheme.WIDEVINE
-)
-
-enum class DrmScheme {
-    WIDEVINE,
-    PLAYREADY,
-    CLEARKEY
-}
-
-/**
- * Represents a video content item with streaming metadata
- */
-data class VideoContent(
-    val id: String,
-    val title: String,
-    val description: String,
-    val thumbnailUrl: String,
-    val videoUrl: String,
-    val duration: Long, // in seconds
-    val category: String,
-    val drmConfig: DrmConfig? = null, // Optional DRM protection
-    val hasAds: Boolean = false // For LAR (Linear Ad Replacement) demonstration
-)
+import lt.vitalijus.watchme.data.dto.VideoDto
 
 /**
  * Sample content for the demo app
@@ -36,7 +8,7 @@ data class VideoContent(
  */
 object SampleContent {
     val videos = listOf(
-        VideoContent(
+        VideoDto(
             id = "1",
             title = "Big Buck Bunny",
             description = "A large and lovable rabbit deals with three tiny bullies. " +
@@ -47,7 +19,7 @@ object SampleContent {
             category = "Demo",
             hasAds = true
         ),
-        VideoContent(
+        VideoDto(
             id = "2",
             title = "Elephants Dream (DASH)",
             description = "The story of two friends exploring a strange mechanical world. " +
@@ -58,7 +30,7 @@ object SampleContent {
             category = "Demo",
             hasAds = false
         ),
-        VideoContent(
+        VideoDto(
             id = "3",
             title = "Sintel",
             description = "A young woman seeks revenge for her dragon friend. " +
@@ -69,7 +41,7 @@ object SampleContent {
             category = "Demo",
             hasAds = false
         ),
-        VideoContent(
+        VideoDto(
             id = "4",
             title = "DRM Protected Content (Widevine)",
             description = "Demonstrates Widevine DRM protected content. " +
@@ -78,12 +50,11 @@ object SampleContent {
             videoUrl = "https://storage.googleapis.com/wvmedia/cenc/h264/tears/tears.mpd",
             duration = 735,
             category = "Protected",
-            drmConfig = DrmConfig(
-                licenseUrl = "https://proxy.uat.widevine.com/proxy?video_id=2015_tears&provider=widevine_test"
-            ),
+            hasDrm = true,
+            drmLicenseUrl = "https://proxy.uat.widevine.com/proxy?video_id=2015_tears&provider=widevine_test",
             hasAds = false
         ),
-        VideoContent(
+        VideoDto(
             id = "5",
             title = "CBS News - Live 24/7",
             description = "Real CBS News live stream broadcasting 24/7. " +
@@ -95,7 +66,7 @@ object SampleContent {
             category = "Live",
             hasAds = true
         ),
-        VideoContent(
+        VideoDto(
             id = "6",
             title = "ABC News - Live Channel",
             description = "Real ABC News live 24/7 broadcast. " +
