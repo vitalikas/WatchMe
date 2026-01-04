@@ -4,7 +4,11 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import lt.vitalijus.watchme.architecture.MviViewModel
 import lt.vitalijus.watchme.domain.model.Video
-import lt.vitalijus.watchme.domain.usecase.*
+import lt.vitalijus.watchme.domain.usecase.FilterVideosByCategoryUseCase
+import lt.vitalijus.watchme.domain.usecase.GetCategoriesUseCase
+import lt.vitalijus.watchme.domain.usecase.GetVideosUseCase
+import lt.vitalijus.watchme.domain.usecase.RefreshVideosUseCase
+import lt.vitalijus.watchme.domain.usecase.SearchVideosUseCase
 
 /**
  * Browse ViewModel (Redux-style)
@@ -17,6 +21,7 @@ import lt.vitalijus.watchme.domain.usecase.*
  */
 class BrowseViewModel(
     private val getVideosUseCase: GetVideosUseCase,
+    private val refreshVideosUseCase: RefreshVideosUseCase,
     private val filterVideosByCategoryUseCase: FilterVideosByCategoryUseCase,
     private val searchVideosUseCase: SearchVideosUseCase,
     private val getCategoriesUseCase: GetCategoriesUseCase
@@ -35,27 +40,32 @@ class BrowseViewModel(
         when (intent) {
             is BrowseIntent.LoadVideos -> loadVideos()
             is BrowseIntent.Refresh -> refreshVideos()
-            is BrowseIntent.SelectCategory -> selectCategory(intent.category)
-            is BrowseIntent.SearchVideos -> searchVideos(intent.query)
-            is BrowseIntent.VideoClicked -> navigateToPlayer(intent.video)
+            is BrowseIntent.SelectCategory -> selectCategory(category = intent.category)
+            is BrowseIntent.SearchVideos -> searchVideos(query = intent.query)
+            is BrowseIntent.VideoClicked -> navigateToPlayer(video = intent.video)
             is BrowseIntent.AnalyticsClicked -> navigateToAnalytics()
         }
     }
 
     private fun loadVideos() {
         viewModelScope.launch {
-            setState { copy(isLoading = true, error = null) }
+            setState {
+                copy(
+                    isLoading = true,
+                    error = null
+                )
+            }
 
             getVideosUseCase()
                 .collect { videos ->
                     setState {
-                        val categories = getCategoriesUseCase(videos)
-                        val filtered = applyFilters(videos)
+                        val categories = getCategoriesUseCase(videos = videos)
+                        val filteredVideos = applyFilters(videos = videos)
 
                         copy(
                             isLoading = false,
                             allVideos = videos,
-                            displayedVideos = filtered,
+                            displayedVideos = filteredVideos,
                             categories = categories,
                             error = null
                         )
@@ -64,37 +74,85 @@ class BrowseViewModel(
         }
     }
 
-    private suspend fun refreshVideos() {
-        setState { copy(isLoading = true) }
-        loadVideos()
+    private fun refreshVideos() {
+        viewModelScope.launch {
+            setState {
+                copy(
+                    isLoading = true,
+                    error = null
+                )
+            }
+
+            // Force refresh - invalidates cache and fetches fresh data
+            refreshVideosUseCase()
+                .fold(
+                    onSuccess = { videos ->
+                        val categories = getCategoriesUseCase(videos = videos)
+                        val filteredVideos = applyFilters(videos = videos)
+
+                        setState {
+                            copy(
+                                isLoading = false,
+                                allVideos = videos,
+                                displayedVideos = filteredVideos,
+                                categories = categories,
+                                error = null
+                            )
+                        }
+                    },
+                    onFailure = { error ->
+                        setState {
+                            copy(
+                                isLoading = false,
+                                error = error.message ?: "Failed to refresh videos"
+                            )
+                        }
+                        sendEffect(
+                            effect = BrowseEffect.ShowError(
+                                message = "Failed to refresh: ${error.message}"
+                            )
+                        )
+                    }
+                )
+        }
     }
 
-    private suspend fun selectCategory(category: String) {
+    private fun selectCategory(category: String) {
         setState {
-            val filtered = applyFilters(allVideos, category = category)
+            val filteredVideos = applyFilters(
+                videos = allVideos,
+                category = category
+            )
             copy(
                 selectedCategory = category,
-                displayedVideos = filtered
+                displayedVideos = filteredVideos
             )
         }
     }
 
-    private suspend fun searchVideos(query: String) {
+    private fun searchVideos(query: String) {
         setState {
-            val filtered = applyFilters(allVideos, searchQuery = query)
+            val filteredVideos = applyFilters(
+                videos = allVideos,
+                searchQuery = query
+            )
             copy(
                 searchQuery = query,
-                displayedVideos = filtered
+                displayedVideos = filteredVideos
             )
         }
     }
 
     private fun navigateToPlayer(video: Video) {
-        sendEffect(BrowseEffect.NavigateToPlayer(video.id))
+        sendEffect(
+            effect = BrowseEffect.NavigateToPlayer(
+                videoId = video.id
+            )
+        )
     }
 
     private fun navigateToAnalytics() {
-        sendEffect(BrowseEffect.NavigateToAnalytics)
+        sendEffect(effect = BrowseEffect.NavigateToAnalytics)
     }
 
     /**
@@ -109,11 +167,17 @@ class BrowseViewModel(
         var result = videos
 
         // Apply category filter
-        result = filterVideosByCategoryUseCase(result, category)
+        result = filterVideosByCategoryUseCase(
+            videos = result,
+            category = category
+        )
 
         // Apply search filter
         if (searchQuery.isNotBlank()) {
-            result = searchVideosUseCase(result, searchQuery)
+            result = searchVideosUseCase(
+                videos = result,
+                query = searchQuery
+            )
         }
 
         return result

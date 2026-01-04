@@ -8,6 +8,7 @@ import lt.vitalijus.watchme.domain.usecase.FilterVideosByCategoryUseCase
 import lt.vitalijus.watchme.domain.usecase.GetCategoriesUseCase
 import lt.vitalijus.watchme.domain.usecase.GetVideoByIdUseCase
 import lt.vitalijus.watchme.domain.usecase.GetVideosUseCase
+import lt.vitalijus.watchme.domain.usecase.RefreshVideosUseCase
 import lt.vitalijus.watchme.domain.usecase.SearchVideosUseCase
 import lt.vitalijus.watchme.presentation.browse.BrowseViewModel
 import org.koin.androidx.viewmodel.dsl.viewModel
@@ -34,8 +35,9 @@ val dataModule = module {
  */
 val domainModule = module {
     // Factories - new instance each time
-    factory { GetVideosUseCase(repository = get()) }
-    factory { GetVideoByIdUseCase(repository = get()) }
+    factory { GetVideosUseCase(get()) }
+    factory { RefreshVideosUseCase(get()) }
+    factory { GetVideoByIdUseCase(get()) }
     factory { FilterVideosByCategoryUseCase() }
     factory { SearchVideosUseCase() }
     factory { GetCategoriesUseCase() }
@@ -50,6 +52,7 @@ val presentationModule = module {
     viewModel {
         BrowseViewModel(
             getVideosUseCase = get(),
+            refreshVideosUseCase = get(),
             filterVideosByCategoryUseCase = get(),
             searchVideosUseCase = get(),
             getCategoriesUseCase = get()

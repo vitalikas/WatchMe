@@ -15,18 +15,34 @@ class VideoRepositoryImpl(
 ) : VideoRepository {
 
     override suspend fun getVideos(): Result<List<Video>> {
+        // Check cache first
         val cached = cache.getVideos()
         if (cached.isNotEmpty() && !cache.isExpired()) {
             return Result.success(cached)
         }
 
+        // Cache invalid/expired, fetch fresh
+        return fetchAndCache()
+    }
+
+    override suspend fun refreshVideos(): Result<List<Video>> {
+        // Force refresh: invalidate cache and fetch fresh data
+        cache.invalidate()
+        return fetchAndCache()
+    }
+
+    /**
+     * Private helper to fetch from remote and update cache
+     * Uses runCatchingCancellable to properly handle coroutine cancellation
+     */
+    private suspend fun fetchAndCache(): Result<List<Video>> {
         return runCatchingCancellable {
             val videos = remoteDataSource.fetchVideos()
             cache.saveVideos(videos = videos)
             videos
         }
             .recover { error ->
-                // Attempt to recover using the cache.
+                // Attempt to recover using the cache
                 val fallbackCache = cache.getVideos()
                 fallbackCache.ifEmpty {
                     throw error

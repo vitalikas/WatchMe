@@ -12,4 +12,6 @@ interface VideoLocalDataSource {
     fun saveVideos(videos: List<Video>)
     fun saveVideo(video: Video)
     fun isExpired(): Boolean
+    fun invalidate() // Clear cache and mark as expired
+    fun clear() // Remove all cached data
 }
