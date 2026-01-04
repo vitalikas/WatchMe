@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import lt.vitalijus.watchme.domain.model.Video
 import lt.vitalijus.watchme.domain.repository.VideoRepository
+import lt.vitalijus.watchme.util.runCatchingCancellable
 
 /**
  * Repository implementation with caching

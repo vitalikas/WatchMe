@@ -1,4 +1,4 @@
-package lt.vitalijus.watchme.data.repository
+package lt.vitalijus.watchme.util
 
 import kotlinx.coroutines.CancellationException
 import kotlin.coroutines.cancellation.CancellationException as CoroutineCancellationException

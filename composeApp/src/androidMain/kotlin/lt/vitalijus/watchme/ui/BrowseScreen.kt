@@ -54,9 +54,10 @@ import org.koin.androidx.compose.koinViewModel
 @Composable
 fun BrowseScreen(
     onVideoSelected: (Video) -> Unit,
-    onAnalyticsClick: () -> Unit,
-    viewModel: BrowseViewModel = koinViewModel()
+    onAnalyticsClick: () -> Unit
 ) {
+    val viewModel: BrowseViewModel = koinViewModel()
+
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Scaffold(
