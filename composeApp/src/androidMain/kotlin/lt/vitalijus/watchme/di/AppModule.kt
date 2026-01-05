@@ -12,7 +12,7 @@ import lt.vitalijus.watchme.domain.usecase.GetVideoByIdUseCase
 import lt.vitalijus.watchme.domain.usecase.GetVideosUseCase
 import lt.vitalijus.watchme.domain.usecase.RefreshVideosUseCase
 import lt.vitalijus.watchme.domain.usecase.SearchVideosUseCase
-import lt.vitalijus.watchme.presentation.browse.BrowseViewModel
+import lt.vitalijus.watchme.ui.browse.BrowseViewModel
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
 

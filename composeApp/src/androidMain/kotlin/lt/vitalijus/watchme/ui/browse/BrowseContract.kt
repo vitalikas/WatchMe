@@ -1,4 +1,4 @@
-package lt.vitalijus.watchme.presentation.browse
+package lt.vitalijus.watchme.ui.browse
 
 import lt.vitalijus.watchme.architecture.UiEffect
 import lt.vitalijus.watchme.architecture.UiIntent

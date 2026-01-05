@@ -60,6 +60,7 @@ import lt.vitalijus.watchme.analytics.AnalyticsEvent
 import lt.vitalijus.watchme.analytics.VideoAnalyticsTracker
 import lt.vitalijus.watchme.domain.model.Video
 import lt.vitalijus.watchme.streaming.LinearAdReplacementManager
+import lt.vitalijus.watchme.ui.util.formatDuration
 
 /**
  * Video Player Screen - Second Screen

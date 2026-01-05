@@ -13,7 +13,7 @@ import androidx.navigation.compose.rememberNavController
 import lt.vitalijus.watchme.data.repository.KtorVideoRemoteDataSource
 import lt.vitalijus.watchme.domain.model.Video
 import lt.vitalijus.watchme.ui.AnalyticsScreen
-import lt.vitalijus.watchme.ui.BrowseScreen
+import lt.vitalijus.watchme.ui.browse.BrowseScreen
 import lt.vitalijus.watchme.ui.PlayerScreen
 
 /**

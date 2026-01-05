@@ -1,4 +1,4 @@
-package lt.vitalijus.watchme.presentation.browse
+package lt.vitalijus.watchme.ui.browse
 
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
