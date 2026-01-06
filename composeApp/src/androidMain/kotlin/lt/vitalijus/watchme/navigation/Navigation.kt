@@ -14,7 +14,7 @@ import lt.vitalijus.watchme.data.repository.KtorVideoRemoteDataSource
 import lt.vitalijus.watchme.domain.model.Video
 import lt.vitalijus.watchme.ui.AnalyticsScreen
 import lt.vitalijus.watchme.ui.browse.BrowseScreen
-import lt.vitalijus.watchme.ui.PlayerScreen
+import lt.vitalijus.watchme.ui.player.PlayerScreen
 
 /**
  * Navigation routes for the app
@@ -31,9 +31,9 @@ sealed class Screen(val route: String) {
  * Main navigation setup for the app
  */
 @Composable
-fun AppNavigation(
-    navController: NavHostController = rememberNavController()
-) {
+fun AppNavigation() {
+    val navController: NavHostController = rememberNavController()
+
     NavHost(
         navController = navController,
         startDestination = Screen.Browse.route

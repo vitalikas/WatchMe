@@ -1,5 +1,6 @@
-package lt.vitalijus.watchme.ui
+package lt.vitalijus.watchme.ui.player
 
+import android.content.Context
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
@@ -13,7 +14,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Card
@@ -29,13 +33,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -56,11 +58,15 @@ import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import lt.vitalijus.watchme.analytics.AnalyticsEvent
 import lt.vitalijus.watchme.analytics.VideoAnalyticsTracker
 import lt.vitalijus.watchme.domain.model.Video
+import lt.vitalijus.watchme.streaming.AdPod
 import lt.vitalijus.watchme.streaming.LinearAdReplacementManager
 import lt.vitalijus.watchme.ui.util.formatDuration
+import org.koin.androidx.compose.koinViewModel
 
 /**
  * Video Player Screen - Second Screen
@@ -74,126 +80,148 @@ fun PlayerScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var isPlaying by remember { mutableStateOf(false) }
-    var currentPosition by remember { mutableStateOf(0L) }
-    var duration by remember { mutableStateOf(0L) }
-    var bufferingPercentage by remember { mutableStateOf(0) }
-    var currentQuality by remember { mutableStateOf("Auto") }
-    var error by remember { mutableStateOf<String?>(null) }
+    val viewModel: PlayerViewModel = koinViewModel()
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
 
-    // Save playback position across configuration changes (fold/unfold, rotation, etc.)
-    var savedPosition by rememberSaveable { mutableStateOf(0L) }
-    var wasPlaying by rememberSaveable { mutableStateOf(true) }
-
-    // LAR state
+    // LAR state (still from manager, as it's shared across app)
     val isAdPlaying by LinearAdReplacementManager.isAdPlaying.collectAsState()
     val currentAdPod by LinearAdReplacementManager.currentAdPod.collectAsState()
 
-    // ExoPlayer setup
+    // Create ExoPlayer - cached across recompositions, recreated only when video.id changes
     val exoPlayer = remember(video.id) {
         createExoPlayer(
             context = context,
             video = video,
-            initialPosition = savedPosition,
-            playWhenReady = wasPlaying,
+            initialPosition = 0L,
+            playWhenReady = true,
             onError = { errorMessage ->
-                error = errorMessage
+                viewModel.handleIntent(
+                    intent = PlayerIntent.HandleError(
+                        errorMessage = errorMessage
+                    )
+                )
                 VideoAnalyticsTracker.trackEvent(
-                    AnalyticsEvent.ErrorOccurred(
+                    event = AnalyticsEvent.ErrorOccurred(
                         videoId = video.id,
                         errorMessage = errorMessage,
                         timestamp = System.currentTimeMillis()
                     )
                 )
             },
-            onBufferingUpdate = { percentage ->
-                bufferingPercentage = percentage
+            onBufferingStateChange = { isBuffering ->
+                viewModel.handleIntent(
+                    intent = PlayerIntent.UpdateBuffering(
+                        isBuffering = isBuffering
+                    )
+                )
+            },
+            onDurationReady = { playerInstance, duration ->
+                // Update duration when player is ready (for videos without ads)
+                if (!video.hasAds) {
+                    viewModel.handleIntent(
+                        PlayerIntent.UpdatePlaybackState(
+                            isPlaying = playerInstance.isPlaying,
+                            currentPosition = playerInstance.currentPosition,
+                            duration = duration
+                        )
+                    )
+                }
             }
         )
     }
 
-    // Track analytics
-    LaunchedEffect(video.id) {
+    // Manage player lifecycle with DisposableEffect
+    DisposableEffect(video.id) {
+        // Track analytics - video started
         VideoAnalyticsTracker.trackEvent(
-            AnalyticsEvent.VideoStarted(
+            event = AnalyticsEvent.VideoStarted(
                 videoId = video.id,
                 videoTitle = video.title,
                 timestamp = System.currentTimeMillis()
             )
         )
 
-        // Initialize DRM if present
+        // Track DRM initialization if present
         if (video.hasDrm && video.drmLicenseUrl != null) {
             VideoAnalyticsTracker.trackEvent(
-                AnalyticsEvent.DrmInitialized(
+                event = AnalyticsEvent.DrmInitialized(
                     videoId = video.id,
                     drmScheme = "Widevine",
                     timestamp = System.currentTimeMillis()
                 )
             )
         }
-    }
 
-    // Update playback state
-    LaunchedEffect(exoPlayer) {
-        while (true) {
-            isPlaying = exoPlayer.isPlaying
-            currentPosition = exoPlayer.currentPosition
-            duration = exoPlayer.duration.takeIf { it != C.TIME_UNSET } ?: 0L
+        // Monitor for LAR ad breaks (only if ads are enabled)
+        // Also updates position in state for ad indicator overlay
+        val monitoringJob = if (video.hasAds) {
+            scope.launch {
+                while (isActive) {
+                    val currentPosition = exoPlayer.currentPosition
 
-            // Check for ad breaks (LAR simulation)
-            if (video.hasAds) {
-                // Check if we should start a new ad pod
-                val adPod = LinearAdReplacementManager.checkForAdBreak(
-                    currentPosition = currentPosition,
-                    videoId = video.id,
-                    hasAds = video.hasAds
-                )
-
-                // Start ad pod if found and not already playing
-                if (adPod != null && currentAdPod?.id != adPod.id) {
-                    LinearAdReplacementManager.startAdPod(adPod)
-                    VideoAnalyticsTracker.trackEvent(
-                        AnalyticsEvent.AdShown(
-                            videoId = video.id,
-                            adId = adPod.id,
-                            adPosition = currentPosition,
-                            timestamp = System.currentTimeMillis()
+                    // Update position for ad indicator overlay
+                    viewModel.handleIntent(
+                        intent = PlayerIntent.UpdatePlaybackState(
+                            isPlaying = exoPlayer.isPlaying,
+                            currentPosition = currentPosition,
+                            duration = exoPlayer.duration.takeIf { it != C.TIME_UNSET } ?: 0L
                         )
                     )
-                }
 
-                // End ad pod if:
-                // 1. Position moved past the ad duration
-                // 2. User seeked/scrubbed outside the ad range
-                if (currentAdPod != null) {
-                    val adStart = currentAdPod!!.startPosition
-                    val adEnd = adStart + currentAdPod!!.duration
+                    // Check if we should start a new ad pod
+                    val adPod = LinearAdReplacementManager.checkForAdBreak(
+                        currentPosition = currentPosition,
+                        videoId = video.id,
+                        hasAds = video.hasAds
+                    )
 
-                    if (currentPosition < adStart || currentPosition > adEnd) {
-                        LinearAdReplacementManager.endAdPod()
+                    // Start ad pod if found and not already playing
+                    if (adPod != null && currentAdPod?.id != adPod.id) {
+                        LinearAdReplacementManager.startAdPod(adPod = adPod)
+                        VideoAnalyticsTracker.trackEvent(
+                            event = AnalyticsEvent.AdShown(
+                                videoId = video.id,
+                                adId = adPod.id,
+                                adPosition = currentPosition,
+                                timestamp = System.currentTimeMillis()
+                            )
+                        )
                     }
+
+                    // End ad pod if:
+                    // 1. Position moved past the ad duration
+                    // 2. User seeked/scrubbed outside the ad range
+                    if (currentAdPod != null) {
+                        val adStart = currentAdPod!!.startPosition
+                        val adEnd = adStart + currentAdPod!!.duration
+
+                        if (currentPosition < adStart || currentPosition > adEnd) {
+                            LinearAdReplacementManager.endAdPod()
+                        }
+                    }
+
+                    delay(500) // Check every 500ms - sufficient for ad break detection
                 }
             }
-
-            delay(250) // Reduced frequency to prevent frame drops
+        } else {
+            null
         }
-    }
 
-    DisposableEffect(Unit) {
         onDispose {
-            // Save current state for configuration changes (fold/unfold, rotation)
-            savedPosition = exoPlayer.currentPosition
-            wasPlaying = exoPlayer.isPlaying
+            // Cancel monitoring job if exists
+            monitoringJob?.cancel()
 
-            val finalPosition = exoPlayer.currentPosition
+            // Track analytics
             VideoAnalyticsTracker.trackEvent(
-                AnalyticsEvent.VideoPaused(
+                event = AnalyticsEvent.VideoPaused(
                     videoId = video.id,
-                    position = finalPosition,
+                    position = exoPlayer.currentPosition,
                     timestamp = System.currentTimeMillis()
                 )
             )
+
+            // Clean up resources
             LinearAdReplacementManager.reset()
             exoPlayer.release()
         }
@@ -220,6 +248,7 @@ fun PlayerScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(paddingValues)
         ) {
             // Video player
@@ -247,12 +276,12 @@ fun PlayerScreen(
                 if (isAdPlaying && currentAdPod != null) {
                     AdIndicatorOverlay(
                         adPod = currentAdPod!!,
-                        currentPosition = currentPosition
+                        currentPosition = state.currentPosition
                     )
                 }
 
                 // Buffering indicator
-                if (bufferingPercentage > 0 && bufferingPercentage < 100) {
+                if (state.isBuffering) {
                     CircularProgressIndicator(
                         modifier = Modifier.align(Alignment.Center)
                     )
@@ -266,7 +295,7 @@ fun PlayerScreen(
                     .padding(16.dp)
             ) {
                 // Error message
-                error?.let { errorMsg ->
+                state.error?.let { errorMsg ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -300,14 +329,14 @@ fun PlayerScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Technical info
-                TechnicalInfoCard(video, currentQuality, duration)
+                TechnicalInfoCard(video, state.currentQuality, state.duration)
             }
         }
     }
 }
 
 @Composable
-fun AdIndicatorOverlay(adPod: lt.vitalijus.watchme.streaming.AdPod, currentPosition: Long) {
+fun AdIndicatorOverlay(adPod: AdPod, currentPosition: Long) {
     val positionInPod = currentPosition - adPod.startPosition
     val currentAd = LinearAdReplacementManager.getCurrentAd(positionInPod)
 
@@ -365,7 +394,14 @@ fun TechnicalInfoCard(video: Video, quality: String, duration: Long) {
 
             InfoRow("Format", if (video.videoUrl.contains(".m3u8")) "HLS" else "DASH")
             InfoRow("Quality", quality)
-            InfoRow("Duration", formatDuration(duration / 1000))
+
+            // Duration with loading state
+            if (duration > 0L) {
+                InfoRow("Duration", formatDuration(duration / 1000))
+            } else {
+                InfoRowWithLoading("Duration")
+            }
+
             InfoRow(
                 "DRM", if (video.hasDrm)
                     "✓ Widevine" else "None"
@@ -397,14 +433,37 @@ fun InfoRow(label: String, value: String) {
     }
 }
 
+@Composable
+fun InfoRowWithLoading(label: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White.copy(alpha = 0.7f)
+        )
+        CircularProgressIndicator(
+            modifier = Modifier.size(12.dp),
+            strokeWidth = 1.dp,
+            color = Color.White.copy(alpha = 0.6f)
+        )
+    }
+}
+
 @androidx.annotation.OptIn(UnstableApi::class)
 private fun createExoPlayer(
-    context: android.content.Context,
+    context: Context,
     video: Video,
     initialPosition: Long = 0L,
     playWhenReady: Boolean = true,
     onError: (String) -> Unit,
-    onBufferingUpdate: (Int) -> Unit
+    onBufferingStateChange: (Boolean) -> Unit,
+    onDurationReady: (ExoPlayer, Long) -> Unit = { _, _ -> }
 ): ExoPlayer {
     val httpDataSourceFactory = DefaultHttpDataSource.Factory()
 
@@ -438,9 +497,14 @@ private fun createExoPlayer(
     player.addListener(object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             when (playbackState) {
+                Player.STATE_IDLE -> {
+
+                }
+
                 Player.STATE_BUFFERING -> {
+                    onBufferingStateChange(true)
                     VideoAnalyticsTracker.trackEvent(
-                        AnalyticsEvent.BufferingStarted(
+                        event = AnalyticsEvent.BufferingStarted(
                             videoId = video.id,
                             position = player.currentPosition,
                             timestamp = System.currentTimeMillis()
@@ -449,18 +513,25 @@ private fun createExoPlayer(
                 }
 
                 Player.STATE_READY -> {
+                    onBufferingStateChange(false)
                     VideoAnalyticsTracker.trackEvent(
-                        AnalyticsEvent.BufferingEnded(
+                        event = AnalyticsEvent.BufferingEnded(
                             videoId = video.id,
                             bufferingDuration = 500, // Simplified
                             timestamp = System.currentTimeMillis()
                         )
                     )
+
+                    // Notify duration is ready
+                    val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: 0L
+                    if (duration > 0L) {
+                        onDurationReady(player, duration)
+                    }
                 }
 
                 Player.STATE_ENDED -> {
                     VideoAnalyticsTracker.trackEvent(
-                        AnalyticsEvent.VideoCompleted(
+                        event = AnalyticsEvent.VideoCompleted(
                             videoId = video.id,
                             totalDuration = player.duration,
                             timestamp = System.currentTimeMillis()
@@ -477,7 +548,7 @@ private fun createExoPlayer(
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) {
                 VideoAnalyticsTracker.trackEvent(
-                    AnalyticsEvent.VideoPlayed(
+                    event = AnalyticsEvent.VideoPlayed(
                         videoId = video.id,
                         position = player.currentPosition,
                         timestamp = System.currentTimeMillis()

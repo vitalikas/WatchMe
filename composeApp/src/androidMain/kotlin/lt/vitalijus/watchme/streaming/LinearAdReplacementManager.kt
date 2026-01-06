@@ -6,11 +6,11 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Linear Ad Replacement (LAR) Manager
- * 
- * LAR is a technology that replaces ads in linear video streams (live TV) 
+ *
+ * LAR is a technology that replaces ads in linear video streams (live TV)
  * with targeted advertisements. This is crucial for streaming services like TV2 Play
  * to monetize live content while providing personalized ad experiences.
- * 
+ *
  * Key concepts:
  * - Ad Pods: Groups of ads that replace content segments
  * - Cue Points: Timing markers where ads should be inserted
@@ -36,6 +36,7 @@ data class Ad(
  * Simulates ad cue points for Linear Ad Replacement
  */
 object LinearAdReplacementManager {
+
     private val _currentAdPod = MutableStateFlow<AdPod?>(null)
     val currentAdPod: StateFlow<AdPod?> = _currentAdPod.asStateFlow()
 
@@ -80,15 +81,19 @@ object LinearAdReplacementManager {
      * Check if an ad should be played at the current position
      * This simulates SCTE-35 marker detection in live streams
      */
-    fun checkForAdBreak(currentPosition: Long, videoId: String, hasAds: Boolean): AdPod? {
+    fun checkForAdBreak(
+        currentPosition: Long,
+        videoId: String,
+        hasAds: Boolean
+    ): AdPod? {
         if (!hasAds) return null
 
         // Find ad pod that should be active at current position
         return sampleAdPods.find { pod ->
-            val inTimeRange = currentPosition >= pod.startPosition && 
-                             currentPosition < (pod.startPosition + pod.duration)
+            val inTimeRange = currentPosition >= pod.startPosition &&
+                    currentPosition < (pod.startPosition + pod.duration)
             val notCurrentlyPlaying = _currentAdPod.value?.id != pod.id
-            
+
             inTimeRange && notCurrentlyPlaying
         }
     }
@@ -118,15 +123,16 @@ object LinearAdReplacementManager {
     fun getCurrentAd(positionInPod: Long): Ad? {
         val adPod = _currentAdPod.value ?: return null
         var cumulativeDuration = 0L
-        
+
         for (ad in adPod.ads) {
-            if (positionInPod >= cumulativeDuration && 
-                positionInPod < cumulativeDuration + ad.duration) {
+            if (positionInPod >= cumulativeDuration &&
+                positionInPod < cumulativeDuration + ad.duration
+            ) {
                 return ad
             }
             cumulativeDuration += ad.duration
         }
-        
+
         return null
     }
 
@@ -143,10 +149,10 @@ object LinearAdReplacementManager {
      */
     fun isInAdRange(currentPosition: Long, hasAds: Boolean): Boolean {
         if (!hasAds) return false
-        
+
         return sampleAdPods.any { pod ->
-            currentPosition >= pod.startPosition && 
-            currentPosition < (pod.startPosition + pod.duration)
+            currentPosition >= pod.startPosition &&
+                    currentPosition < (pod.startPosition + pod.duration)
         }
     }
 

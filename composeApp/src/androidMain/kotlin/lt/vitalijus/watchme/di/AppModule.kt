@@ -13,6 +13,7 @@ import lt.vitalijus.watchme.domain.usecase.GetVideosUseCase
 import lt.vitalijus.watchme.domain.usecase.RefreshVideosUseCase
 import lt.vitalijus.watchme.domain.usecase.SearchVideosUseCase
 import lt.vitalijus.watchme.ui.browse.BrowseViewModel
+import lt.vitalijus.watchme.ui.player.PlayerViewModel
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
 
@@ -64,8 +65,11 @@ val presentationModule = module {
         )
     }
 
+    viewModel {
+        PlayerViewModel()
+    }
+
     // Add more ViewModels as you migrate:
-    // viewModel { PlayerViewModel(get(), get()) }
     // viewModel { AnalyticsViewModel(get()) }
 }
 
