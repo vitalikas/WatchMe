@@ -4,22 +4,18 @@ import android.content.Context
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -63,9 +59,9 @@ import kotlinx.coroutines.launch
 import lt.vitalijus.watchme.analytics.AnalyticsEvent
 import lt.vitalijus.watchme.analytics.VideoAnalyticsTracker
 import lt.vitalijus.watchme.domain.model.Video
-import lt.vitalijus.watchme.streaming.AdPod
 import lt.vitalijus.watchme.streaming.LinearAdReplacementManager
-import lt.vitalijus.watchme.ui.util.formatDuration
+import lt.vitalijus.watchme.ui.player.components.AdIndicatorOverlay
+import lt.vitalijus.watchme.ui.player.components.TechnicalInfoCard
 import org.koin.androidx.compose.koinViewModel
 
 /**
@@ -117,16 +113,13 @@ fun PlayerScreen(
                 )
             },
             onDurationReady = { playerInstance, duration ->
-                // Update duration when player is ready (for videos without ads)
-                if (!video.hasAds) {
-                    viewModel.handleIntent(
-                        PlayerIntent.UpdatePlaybackState(
-                            isPlaying = playerInstance.isPlaying,
-                            currentPosition = playerInstance.currentPosition,
-                            duration = duration
-                        )
+                viewModel.handleIntent(
+                    intent = PlayerIntent.UpdatePlaybackState(
+                        isPlaying = playerInstance.isPlaying,
+                        currentPosition = playerInstance.currentPosition,
+                        duration = duration
                     )
-                }
+                )
             }
         )
     }
@@ -160,12 +153,13 @@ fun PlayerScreen(
                 while (isActive) {
                     val currentPosition = exoPlayer.currentPosition
 
-                    // Update position for ad indicator overlay
+                    // Update position and playing state for ad indicator overlay
+                    // Note: duration is updated once via onDurationReady callback
                     viewModel.handleIntent(
                         intent = PlayerIntent.UpdatePlaybackState(
                             isPlaying = exoPlayer.isPlaying,
                             currentPosition = currentPosition,
-                            duration = exoPlayer.duration.takeIf { it != C.TIME_UNSET } ?: 0L
+                            duration = state.duration  // Use cached duration from state
                         )
                     )
 
@@ -230,10 +224,13 @@ fun PlayerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(video.title) },
+                title = { Text(text = video.title) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -314,144 +311,26 @@ fun PlayerScreen(
 
                 // Video details
                 Text(
-                    video.title,
+                    text = video.title,
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(height = 8.dp))
                 Text(
-                    video.description,
+                    text = video.description,
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.8f)
                 )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
+                Spacer(modifier = Modifier.height(height = 16.dp))
                 // Technical info
-                TechnicalInfoCard(video, state.currentQuality, state.duration)
-            }
-        }
-    }
-}
-
-@Composable
-fun AdIndicatorOverlay(adPod: AdPod, currentPosition: Long) {
-    val positionInPod = currentPosition - adPod.startPosition
-    val currentAd = LinearAdReplacementManager.getCurrentAd(positionInPod)
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-    ) {
-        Card(
-            modifier = Modifier.align(Alignment.TopEnd),
-            shape = RoundedCornerShape(8.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xFFF57C00).copy(alpha = 0.9f)
-            )
-        ) {
-            Column(
-                modifier = Modifier.padding(12.dp)
-            ) {
-                Text(
-                    "📺 AD",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+                TechnicalInfoCard(
+                    video = video,
+                    quality = state.currentQuality,
+                    duration = state.duration
                 )
-                currentAd?.let { ad ->
-                    Text(
-                        ad.title,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White
-                    )
-                }
             }
         }
-    }
-}
-
-@Composable
-fun TechnicalInfoCard(video: Video, quality: String, duration: Long) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.1f)
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Text(
-                "📊 Technical Details",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            InfoRow("Format", if (video.videoUrl.contains(".m3u8")) "HLS" else "DASH")
-            InfoRow("Quality", quality)
-
-            // Duration with loading state
-            if (duration > 0L) {
-                InfoRow("Duration", formatDuration(duration / 1000))
-            } else {
-                InfoRowWithLoading("Duration")
-            }
-
-            InfoRow(
-                "DRM", if (video.hasDrm)
-                    "✓ Widevine" else "None"
-            )
-            InfoRow("LAR Enabled", if (video.hasAds) "✓ Yes" else "No")
-        }
-    }
-}
-
-@Composable
-fun InfoRow(label: String, value: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White.copy(alpha = 0.7f)
-        )
-        Text(
-            value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            color = Color.White
-        )
-    }
-}
-
-@Composable
-fun InfoRowWithLoading(label: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White.copy(alpha = 0.7f)
-        )
-        CircularProgressIndicator(
-            modifier = Modifier.size(12.dp),
-            strokeWidth = 1.dp,
-            color = Color.White.copy(alpha = 0.6f)
-        )
     }
 }
 
@@ -459,8 +338,8 @@ fun InfoRowWithLoading(label: String) {
 private fun createExoPlayer(
     context: Context,
     video: Video,
-    initialPosition: Long = 0L,
-    playWhenReady: Boolean = true,
+    initialPosition: Long,
+    playWhenReady: Boolean,
     onError: (String) -> Unit,
     onBufferingStateChange: (Boolean) -> Unit,
     onDurationReady: (ExoPlayer, Long) -> Unit = { _, _ -> }
