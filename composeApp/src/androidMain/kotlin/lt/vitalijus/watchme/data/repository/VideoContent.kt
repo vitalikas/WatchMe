@@ -1,4 +1,4 @@
-package lt.vitalijus.watchme.model
+package lt.vitalijus.watchme.data.repository
 
 import lt.vitalijus.watchme.data.dto.VideoDto
 
@@ -6,7 +6,7 @@ import lt.vitalijus.watchme.data.dto.VideoDto
  * Sample content for the demo app
  * Using public test streams from various sources
  */
-object SampleContent {
+object VideoContent {
     val videos = listOf(
         VideoDto(
             id = "1",
