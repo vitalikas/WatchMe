@@ -29,10 +29,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -57,6 +60,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import lt.vitalijus.watchme.analytics.AnalyticsEvent
+import lt.vitalijus.watchme.data.repository.KtorVideoRemoteDataSource
 import lt.vitalijus.watchme.analytics.VideoAnalyticsTracker
 import lt.vitalijus.watchme.domain.model.Video
 import lt.vitalijus.watchme.streaming.LinearAdReplacementManager
@@ -65,13 +69,49 @@ import lt.vitalijus.watchme.ui.player.components.TechnicalInfoCard
 import org.koin.androidx.compose.koinViewModel
 
 /**
+ * Video Player Screen - Wrapper that handles video loading
+ */
+@Composable
+fun PlayerScreen(
+    videoId: String,
+    onBack: () -> Unit
+) {
+    var video by remember { mutableStateOf<Video?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    
+    // Load video asynchronously
+    LaunchedEffect(videoId) {
+        isLoading = true
+        video = KtorVideoRemoteDataSource().fetchVideoById(videoId)
+        isLoading = false
+    }
+    
+    when {
+        isLoading -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+        video != null -> {
+            PlayerScreenContent(
+                video = video!!,
+                onBack = onBack
+            )
+        }
+    }
+}
+
+/**
  * Video Player Screen - Second Screen
  * Implements ExoPlayer with DRM support and LAR integration
  * Demonstrates key streaming technologies required for TV2 Play
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PlayerScreen(
+private fun PlayerScreenContent(
     video: Video,
     onBack: () -> Unit
 ) {

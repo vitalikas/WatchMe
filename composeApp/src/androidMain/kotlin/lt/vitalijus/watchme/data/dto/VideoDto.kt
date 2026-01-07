@@ -1,5 +1,7 @@
 package lt.vitalijus.watchme.data.dto
 
+import lt.vitalijus.watchme.domain.model.PlayerType
+
 /**
  * Data Transfer Object for Video
  * Represents video data from API/data source before mapping to domain model
@@ -11,7 +13,7 @@ data class VideoDto(
     val thumbnailUrl: String,
     val videoUrl: String,
     val duration: Long, // in seconds
-    val category: String,
+    val playerType: PlayerType,  // Type-safe player type (was category: String)
     val hasDrm: Boolean = false,
     val drmLicenseUrl: String? = null,
     val hasAds: Boolean = false // For LAR (Linear Ad Replacement) demonstration

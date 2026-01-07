@@ -1,91 +1,68 @@
 package lt.vitalijus.watchme.navigation
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import lt.vitalijus.watchme.data.repository.KtorVideoRemoteDataSource
-import lt.vitalijus.watchme.domain.model.Video
-import lt.vitalijus.watchme.ui.AnalyticsScreen
-import lt.vitalijus.watchme.ui.browse.BrowseScreen
-import lt.vitalijus.watchme.ui.player.PlayerScreen
+import lt.vitalijus.watchme.navigation.routes.AnalyticsRouteRegistrar
+import lt.vitalijus.watchme.navigation.routes.BrowseRouteRegistrar
+import lt.vitalijus.watchme.navigation.routes.Scte35PlayerRouteRegistrar
+import lt.vitalijus.watchme.navigation.routes.StandardPlayerRouteRegistrar
 
 /**
- * Navigation routes for the app
+ * Navigation screen routes (single source of truth for route patterns)
+ *
+ * Screen objects provide type-safe route constants and argument keys that can be used throughout the app.
+ * RouteRegistrars use these as the source of truth to avoid duplication.
+ *
+ * Screens without arguments have argumentKey = null
+ * Screens with arguments have argumentKey = the key name (e.g., "videoId")
  */
-sealed class Screen(val route: String) {
-    object Browse : Screen("browse")
-    object Player : Screen("player/{videoId}") {
-        fun createRoute(videoId: String) = "player/$videoId"
-    }
-    object Analytics : Screen("analytics")
+sealed class Screen(
+    val route: String,
+    val argumentKey: String? = null
+) {
+
+    object Browse : Screen(route = "browse")  // No arguments → argumentKey = null
+
+    object StandardPlayer : Screen(
+        route = "standard_player/{videoId}",
+        argumentKey = "videoId"  // Has argument → type-safe key
+    )
+
+    object Scte35Player : Screen(
+        route = "scte35_player/{videoId}",
+        argumentKey = "videoId"  // Has argument → type-safe key
+    )
+
+    object Analytics : Screen(route = "analytics")  // No arguments → argumentKey = null
 }
 
 /**
  * Main navigation setup for the app
+ *
+ * Navigation.kt is the central place where all app routes are assembled.
+ * PlayerRouter.kt is route-agnostic and simply registers whatever routes are passed to it.
+ *
+ * To add new routes, just add them to the list passed to PlayerRouter.registerAllRoutes()
+ * PlayerRouter.kt doesn't need modification!
  */
 @Composable
+@androidx.media3.common.util.UnstableApi
 fun AppNavigation() {
     val navController: NavHostController = rememberNavController()
-
     NavHost(
         navController = navController,
         startDestination = Screen.Browse.route
     ) {
-        // Browse/Catalog Screen
-        composable(Screen.Browse.route) {
-            BrowseScreen(
-                onVideoSelected = { video ->
-                    navController.navigate(Screen.Player.createRoute(video.id))
-                },
-                onAnalyticsClick = {
-                    navController.navigate(Screen.Analytics.route)
-                }
-            )
-        }
-
-        // Player Screen
-        composable(Screen.Player.route) { backStackEntry ->
-            val videoId = backStackEntry.arguments?.getString("videoId") ?: ""
-            var video by remember { mutableStateOf<Video?>(null) }
-            var isLoading by remember { mutableStateOf(true) }
-            
-            // Load video asynchronously
-            LaunchedEffect(videoId) {
-                isLoading = true
-                video = KtorVideoRemoteDataSource().fetchVideoById(videoId)
-                isLoading = false
-            }
-            
-            when {
-                isLoading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                }
-                video != null -> {
-                    PlayerScreen(
-                        video = video!!,
-                        onBack = { navController.popBackStack() }
-                    )
-                }
-            }
-        }
-
-        // Analytics Screen
-        composable(Screen.Analytics.route) {
-            AnalyticsScreen(
-                onBack = { navController.popBackStack() }
-            )
-        }
+        PlayerRouter.registerAllRoutes(
+            navController = navController,
+            builder = this@NavHost,
+            BrowseRouteRegistrar,
+            AnalyticsRouteRegistrar,
+            StandardPlayerRouteRegistrar,
+            Scte35PlayerRouteRegistrar
+            // Add new routes here! PlayerRouter.kt stays unchanged
+        )
     }
 }

@@ -15,7 +15,7 @@ fun VideoDto.toDomainModel(): Video {
         thumbnailUrl = thumbnailUrl,
         videoUrl = videoUrl,
         duration = duration,
-        category = category,
+        playerType = playerType,  // Type-safe player type (was category)
         hasDrm = hasDrm,
         hasAds = hasAds,
         drmLicenseUrl = drmLicenseUrl

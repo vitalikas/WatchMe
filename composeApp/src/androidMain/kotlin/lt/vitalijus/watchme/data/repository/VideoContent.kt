@@ -1,6 +1,7 @@
 package lt.vitalijus.watchme.data.repository
 
 import lt.vitalijus.watchme.data.dto.VideoDto
+import lt.vitalijus.watchme.domain.model.PlayerType
 
 /**
  * Sample content for the demo app
@@ -16,7 +17,7 @@ object VideoContent {
             thumbnailUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg",
             videoUrl = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
             duration = 634,
-            category = "Demo",
+            playerType = PlayerType.STANDARD,
             hasAds = true
         ),
         VideoDto(
@@ -27,7 +28,7 @@ object VideoContent {
             thumbnailUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ElephantsDream.jpg",
             videoUrl = "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd",
             duration = 653,
-            category = "Demo",
+            playerType = PlayerType.STANDARD,
             hasAds = false
         ),
         VideoDto(
@@ -38,7 +39,7 @@ object VideoContent {
             thumbnailUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/Sintel.jpg",
             videoUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
             duration = 888,
-            category = "Demo",
+            playerType = PlayerType.STANDARD,
             hasAds = false
         ),
         VideoDto(
@@ -49,7 +50,7 @@ object VideoContent {
             thumbnailUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/TearsOfSteel.jpg",
             videoUrl = "https://storage.googleapis.com/wvmedia/cenc/h264/tears/tears.mpd",
             duration = 735,
-            category = "Protected",
+            playerType = PlayerType.STANDARD,
             hasDrm = true,
             drmLicenseUrl = "https://proxy.uat.widevine.com/proxy?video_id=2015_tears&provider=widevine_test",
             hasAds = false
@@ -63,7 +64,7 @@ object VideoContent {
             thumbnailUrl = "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=400&h=225&fit=crop",
             videoUrl = "https://cbsn-us.cbsnstream.cbsnews.com/out/v1/55a8648e8f134e82a470f83d562deeca/master.m3u8",
             duration = 0, // Live stream
-            category = "Live",
+            playerType = PlayerType.STANDARD,
             hasAds = true
         ),
         VideoDto(
@@ -75,8 +76,34 @@ object VideoContent {
             thumbnailUrl = "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=400&h=225&fit=crop",
             videoUrl = "https://d2e1asnsl7br7b.cloudfront.net/7782e205e72f43aeb4a48ec97f66ebbe/index.m3u8",
             duration = 0, // Live stream
-            category = "Live",
+            playerType = PlayerType.STANDARD,
             hasAds = false
+        ),
+        VideoDto(
+            id = "scte35_1",
+            title = "Ad Insertion Demo: Big Buck Bunny",
+            description = "🎯 Client-Side Ad Insertion (CSAI) Demo! " +
+                    "Click 'Test Ad Now' to instantly see real ad videos play (not overlays). " +
+                    "Automatic breaks at: 30s, 90s, 150s. " +
+                    "Demonstrates production-ready ad insertion architecture used in streaming platforms.",
+            thumbnailUrl = "https://images.unsplash.com/photo-1574267432553-4b4628081c31?w=400&h=225&fit=crop",
+            videoUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+            duration = 596,
+            playerType = PlayerType.SCTE35,
+            hasAds = true
+        ),
+        VideoDto(
+            id = "scte35_2",
+            title = "Ad Insertion Demo: Sintel",
+            description = "🎬 Interactive CSAI Test! " +
+                    "Trigger ad insertion on-demand with the 'Test Ad Now' button. " +
+                    "Content pauses → Real ad videos play → Content resumes seamlessly. " +
+                    "Shows complete ad pod management and state handling.",
+            thumbnailUrl = "https://images.unsplash.com/photo-1478720568477-152d9b164e26?w=400&h=225&fit=crop",
+            videoUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
+            duration = 888,
+            playerType = PlayerType.SCTE35,
+            hasAds = true
         )
     )
 }
