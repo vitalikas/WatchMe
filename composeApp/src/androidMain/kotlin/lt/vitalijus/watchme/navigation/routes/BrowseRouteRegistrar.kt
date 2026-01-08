@@ -10,48 +10,30 @@ import lt.vitalijus.watchme.navigation.RouteRegistrar
 import lt.vitalijus.watchme.navigation.Screen
 import lt.vitalijus.watchme.ui.browse.BrowseScreen
 
-/**
- * Browse screen route registration
- * Implements RouteRegistrar for true OCP compliance
- *
- * Uses Screen.Browse as the single source of truth for the route pattern
- */
 @OptIn(UnstableApi::class)
 object BrowseRouteRegistrar : RouteRegistrar {
 
-    private val routePattern = Screen.Browse.route
+    override val screen = Screen.Browse
 
     override fun register(
         builder: NavGraphBuilder,
         navController: NavController
     ) {
-        builder.composable(route = routePattern) {
+        builder.composable(route = screen.route) {
             BrowseScreen(
                 onVideoSelected = { video ->
                     val route = when (video.playerType) {
-                        PlayerType.STANDARD -> StandardPlayerRouteRegistrar.getRoute(video.id)
-                        PlayerType.SCTE35 -> Scte35PlayerRouteRegistrar.getRoute(video.id)
+                        PlayerType.STANDARD -> StandardPlayerRouteRegistrar.getRoute(arg = video.id)
+                        PlayerType.SCTE35 -> Scte35PlayerRouteRegistrar.getRoute(arg = video.id)
                     }
                     navController.navigate(route = route)
                 },
                 onAnalyticsClick = {
-                    AnalyticsRouteRegistrar.navigate(navController = navController)
+                    navController.navigate(route = Screen.Analytics.route)
                 }
             )
         }
     }
 
     override val routeName: String = "Browse"
-
-    /**
-     * Get navigation route for Browse screen (has no arguments)
-     */
-    override fun getRoute(value: String?): String = routePattern
-
-    /**
-     * Navigate to Browse screen
-     */
-    fun navigate(navController: NavController) {
-        navController.navigate(routePattern)
-    }
 }
