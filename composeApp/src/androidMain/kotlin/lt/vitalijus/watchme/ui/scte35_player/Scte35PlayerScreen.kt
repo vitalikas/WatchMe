@@ -15,7 +15,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -47,6 +46,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import lt.vitalijus.watchme.domain.model.Video
 import lt.vitalijus.watchme.streaming.AdVideoPlayer
 import lt.vitalijus.watchme.streaming.Scte35Handler
@@ -126,18 +126,27 @@ private fun Scte35PlayerScreenContent(
     val adVideoPlayer = remember { AdVideoPlayer(context = context) }
 
     // Observe ad playback state and sync with ViewModel
-    LaunchedEffect(
-        adVideoPlayer.isPlayingAd,
-        adVideoPlayer.currentAdIndex,
-        adVideoPlayer.totalAds
-    ) {
-        onIntent(
-            Scte35Intent.AdPlaybackStateChanged(
-                isPlaying = adVideoPlayer.isPlayingAd.value,
-                adIndex = adVideoPlayer.currentAdIndex.value,
-                total = adVideoPlayer.totalAds.value
+    LaunchedEffect(adVideoPlayer) { // Key to the player object itself
+        // Combine all relevant StateFlows from AdVideoPlayer.
+        // This ensures that whenever isPlayingAd, currentAdIndex, OR totalAds changes,
+        // a new intent is sent with the latest state of all three.
+        combine(
+            adVideoPlayer.isPlayingAd,
+            adVideoPlayer.currentAdIndex,
+            adVideoPlayer.totalAds
+        ) { isPlaying, adIndex, total ->
+            // This transform block creates a Triple of the latest values
+            Triple(isPlaying, adIndex, total)
+        }.collect { (isPlaying, adIndex, total) ->
+            // The collect block receives the Triple and sends the intent
+            onIntent(
+                Scte35Intent.AdPlaybackStateChanged(
+                    isPlaying = isPlaying,
+                    adIndex = adIndex,
+                    total = total
+                )
             )
-        )
+        }
     }
 
     // Create ExoPlayer with SCTE-35 support
@@ -259,14 +268,14 @@ private fun Scte35PlayerScreenContent(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(paddingValues)
+                .padding(paddingValues = paddingValues)
         ) {
             // Video player
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .background(Color.Black)
+                    .aspectRatio(ratio = 16f / 9f)
+                    .background(color = Color.Black)
             ) {
                 AndroidView(
                     factory = { ctx ->
@@ -295,16 +304,16 @@ private fun Scte35PlayerScreenContent(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .padding(all = 16.dp)
             ) {
                 Text(
-                    video.title,
+                    text = video.title,
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(height = 8.dp))
 
                 Text(
                     video.description,
@@ -312,7 +321,7 @@ private fun Scte35PlayerScreenContent(
                     color = Color.White.copy(alpha = 0.8f)
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(height = 16.dp))
 
                 // Test Ad Button
                 if (!state.isPlayingAd) {
@@ -327,13 +336,13 @@ private fun Scte35PlayerScreenContent(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFE91E63)
+                            containerColor = Color(color = 0xFFE91E63)
                         )
                     ) {
                         Text("🧪 Test Ad Now (Manual Trigger)")
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(height = 16.dp))
                 }
 
                 // SCTE-35 Info Card
@@ -354,33 +363,27 @@ fun Scte35AdIndicator(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
+            .padding(all = 16.dp)
     ) {
         Card(
-            modifier = Modifier.align(Alignment.TopEnd),
+            modifier = Modifier.align(alignment = Alignment.TopEnd),
             colors = CardDefaults.cardColors(
-                containerColor = Color(0xFFE91E63).copy(alpha = 0.95f)
+                containerColor = Color(color = 0xFFE91E63).copy(alpha = 0.95f)
             )
         ) {
             Column(
-                modifier = Modifier.padding(12.dp),
+                modifier = Modifier.padding(all = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    "🎬 REAL AD",
+                    text = "🎬 AD",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
                 Text(
-                    "Ad ${currentAdIndex + 1} of $totalAds",
+                    text = "Ad ${currentAdIndex + 1} of $totalAds",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                CircularProgressIndicator(
-                    modifier = Modifier.height(16.dp),
-                    strokeWidth = 2.dp,
                     color = Color.White
                 )
             }
@@ -389,76 +392,79 @@ fun Scte35AdIndicator(
 }
 
 @Composable
-fun Scte35InfoCard(isPlayingAd: Boolean, scte35Detected: Boolean) {
+fun Scte35InfoCard(
+    isPlayingAd: Boolean,
+    scte35Detected: Boolean
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = if (isPlayingAd) {
-                Color(0xFFE91E63).copy(alpha = 0.2f)
+                Color(color = 0xFFE91E63).copy(alpha = 0.2f)
             } else {
                 MaterialTheme.colorScheme.surface.copy(alpha = 0.1f)
             }
         )
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(all = 16.dp)
         ) {
             Text(
-                "🎯 SCTE-35 Real Ad Insertion",
+                text = "🎯 SCTE-35 Real Ad Insertion",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(height = 12.dp))
 
             // SCTE-35 Detection Status
             Text(
-                if (scte35Detected) {
+                text = if (scte35Detected) {
                     "✅ Real SCTE-35 markers detected!"
                 } else {
                     "⚠️ Using simulated ad breaks (no SCTE-35 in stream)"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Bold,
-                color = if (scte35Detected) Color(0xFF4CAF50) else Color(0xFFFFA726)
+                color = if (scte35Detected) Color(color = 0xFF4CAF50) else Color(color = 0xFFFFA726)
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(height = 12.dp))
 
             Text(
-                "How it works:",
+                text = "How it works:",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = Color.White.copy(alpha = 0.9f)
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(height = 8.dp))
 
             if (scte35Detected) {
-                InfoBullet("1. Stream contains real SCTE-35 markers")
-                InfoBullet("2. ExoPlayer detects markers automatically")
-                InfoBullet("3. Content pauses when marker hit")
-                InfoBullet("4. Actual ad videos play sequentially")
-                InfoBullet("5. Content resumes after ads complete")
+                InfoBullet(text = "1. Stream contains real SCTE-35 markers")
+                InfoBullet(text = "2. ExoPlayer detects markers automatically")
+                InfoBullet(text = "3. Content pauses when marker hit")
+                InfoBullet(text = "4. Actual ad videos play sequentially")
+                InfoBullet(text = "5. Content resumes after ads complete")
             } else {
-                InfoBullet("Simulated ad breaks at: 30s, 90s, 150s")
-                InfoBullet("Click 'Test Ad Now' to trigger instantly")
-                InfoBullet("Real ads play (not overlays)")
-                InfoBullet("Content resumes after ads")
+                InfoBullet(text = "Simulated ad breaks at: 30s, 90s, 150s")
+                InfoBullet(text = "Click 'Test Ad Now' to trigger instantly")
+                InfoBullet(text = "Real ads play (not overlays)")
+                InfoBullet(text = "Content resumes after ads")
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(height = 12.dp))
 
             Text(
-                if (isPlayingAd) {
+                text = if (isPlayingAd) {
                     "🔴 Currently Playing Ad Video"
                 } else {
                     "✅ Playing Main Content"
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
-                color = if (isPlayingAd) Color(0xFFE91E63) else Color(0xFF4CAF50)
+                color = if (isPlayingAd) Color(color = 0xFFE91E63) else Color(color = 0xFF4CAF50)
             )
         }
     }
@@ -467,7 +473,7 @@ fun Scte35InfoCard(isPlayingAd: Boolean, scte35Detected: Boolean) {
 @Composable
 fun InfoBullet(text: String) {
     Text(
-        "• $text",
+        text = "• $text",
         style = MaterialTheme.typography.bodySmall,
         color = Color.White.copy(alpha = 0.7f),
         modifier = Modifier.padding(vertical = 2.dp)
