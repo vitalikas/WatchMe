@@ -1,4 +1,4 @@
-package lt.vitalijus.watchme.ui.player.components
+package lt.vitalijus.watchme.ui.standard_player.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column

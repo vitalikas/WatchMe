@@ -5,7 +5,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import lt.vitalijus.watchme.navigation.RouteRegistrar
 import lt.vitalijus.watchme.navigation.Screen
-import lt.vitalijus.watchme.ui.player.PlayerScreen
+import lt.vitalijus.watchme.ui.standard_player.PlayerScreen
 
 object StandardPlayerRouteRegistrar : RouteRegistrar {
 

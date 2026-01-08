@@ -8,6 +8,7 @@ import lt.vitalijus.watchme.domain.model.PlayerType
  * Using public test streams from various sources
  */
 object VideoContent {
+
     val videos = listOf(
         VideoDto(
             id = "1",

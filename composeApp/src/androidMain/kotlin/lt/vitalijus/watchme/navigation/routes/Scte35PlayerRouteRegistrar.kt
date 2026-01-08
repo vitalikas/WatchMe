@@ -6,7 +6,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import lt.vitalijus.watchme.navigation.RouteRegistrar
 import lt.vitalijus.watchme.navigation.Screen
-import lt.vitalijus.watchme.ui.player.Scte35PlayerScreen
+import lt.vitalijus.watchme.ui.scte35_player.Scte35PlayerScreen
 
 @UnstableApi
 object Scte35PlayerRouteRegistrar : RouteRegistrar {

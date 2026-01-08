@@ -1,4 +1,4 @@
-package lt.vitalijus.watchme.ui.player
+package lt.vitalijus.watchme.ui.scte35_player
 
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -15,6 +15,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -22,8 +24,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -31,14 +31,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,14 +40,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import lt.vitalijus.watchme.data.repository.KtorVideoRemoteDataSource
+import kotlinx.coroutines.delay
 import lt.vitalijus.watchme.domain.model.Video
 import lt.vitalijus.watchme.streaming.AdVideoPlayer
 import lt.vitalijus.watchme.streaming.Scte35Handler
+import lt.vitalijus.watchme.streaming.SimulatedAdBreakScheduler
+import org.koin.androidx.compose.koinViewModel
 
 /**
  * SCTE-35 Player Screen - Wrapper that handles video loading
@@ -64,18 +61,16 @@ fun Scte35PlayerScreen(
     videoId: String,
     onBack: () -> Unit
 ) {
-    var video by remember { mutableStateOf<Video?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    
-    // Load video asynchronously
+    val viewModel: Scte35PlayerViewModel = koinViewModel()
+    val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // Load video on init
     LaunchedEffect(videoId) {
-        isLoading = true
-        video = KtorVideoRemoteDataSource().fetchVideoById(videoId)
-        isLoading = false
+        viewModel.handleIntent(intent = Scte35Intent.LoadVideo(videoId = videoId))
     }
-    
+
     when {
-        isLoading -> {
+        state.isLoading -> {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -83,18 +78,33 @@ fun Scte35PlayerScreen(
                 CircularProgressIndicator()
             }
         }
-        video != null -> {
+
+        state.video != null -> {
             Scte35PlayerScreenContent(
-                video = video!!,
+                video = state.video!!,
+                state = state,
+                onIntent = viewModel::handleIntent,
                 onBack = onBack
             )
+        }
+
+        state.error != null -> {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = state.error ?: "Unknown error",
+                    color = Color.Red
+                )
+            }
         }
     }
 }
 
 /**
  * SCTE-35 Player Screen Content
- * 
+ *
  * Demonstrates real SCTE-35 marker detection and ad insertion
  * - Parses actual SCTE-35 markers from HLS streams
  * - Plays real ad videos (not overlays)
@@ -105,43 +115,53 @@ fun Scte35PlayerScreen(
 @Composable
 private fun Scte35PlayerScreenContent(
     video: Video,
+    state: Scte35State,
+    onIntent: (Scte35Intent) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    
+
     // Create Ad Video Player manager
-    val adVideoPlayer = remember { AdVideoPlayer(context) }
-    
-    // Observe ad playback state
-    val isPlayingAd by adVideoPlayer.isPlayingAd.collectAsState()
-    val currentAdIndex by adVideoPlayer.currentAdIndex.collectAsState()
-    val totalAds by adVideoPlayer.totalAds.collectAsState()
-    
-    // Track if we've detected any real SCTE-35 markers
-    var scte35MarkersDetected by remember { mutableStateOf(false) }
-    var triggeredAdPositions by remember { mutableStateOf(setOf<Long>()) }
-    
+    val adVideoPlayer = remember { AdVideoPlayer(context = context) }
+
+    // Observe ad playback state and sync with ViewModel
+    LaunchedEffect(
+        adVideoPlayer.isPlayingAd,
+        adVideoPlayer.currentAdIndex,
+        adVideoPlayer.totalAds
+    ) {
+        onIntent(
+            Scte35Intent.AdPlaybackStateChanged(
+                isPlaying = adVideoPlayer.isPlayingAd.value,
+                adIndex = adVideoPlayer.currentAdIndex.value,
+                total = adVideoPlayer.totalAds.value
+            )
+        )
+    }
+
     // Create ExoPlayer with SCTE-35 support
-    val exoPlayer = remember(video.id) {
+    val contentPlayer = remember(video.id) {
         val player = ExoPlayer.Builder(context).build()
-        
+
         val mediaItem = MediaItem.fromUri(video.videoUrl)
-        
+
         // Store player and media item in ad manager
-        adVideoPlayer.setPlayer(player, mediaItem)
-        
+        adVideoPlayer.setPlayer(
+            player = player,
+            mediaItem = mediaItem
+        )
+
         // Add SCTE-35 handler
         val scte35Handler = Scte35Handler(
             onAdBreakStart = { durationMs, positionMs ->
                 println("🎯 SCTE-35 Ad break detected: ${durationMs}ms")
-                scte35MarkersDetected = true
-                
+                onIntent(Scte35Intent.Scte35MarkerFound)
+
                 // Fetch ad URLs (in production, this would be from an ad server)
                 val adUrls = AdVideoPlayer.getSampleAdUrls()
-                
+
                 // Play ad videos
-                adVideoPlayer.playAdBreak(adUrls) {
+                adVideoPlayer.playAdBreak(adUrls = adUrls) {
                     println("✅ Ad break complete, resumed content")
                 }
             },
@@ -150,61 +170,69 @@ private fun Scte35PlayerScreenContent(
                 adVideoPlayer.endAdBreak()
             }
         )
-        
-        player.addListener(scte35Handler)
-        
-        // Set media source (ExoPlayer will auto-detect the format)
-        player.setMediaItem(mediaItem)
-        player.prepare()
-        player.playWhenReady = true
-        
+
+        with(player) {
+            addListener(scte35Handler)
+            setMediaItem(mediaItem)
+            prepare()
+            playWhenReady = true
+        }
+
         player
     }
-    
+
     // Fallback: Simulate ad breaks at specific positions if no real SCTE-35 markers detected
-    LaunchedEffect(exoPlayer, scte35MarkersDetected) {
-        // Wait a bit to see if real markers are detected
-        delay(5000)
-        
-        if (!scte35MarkersDetected && !isPlayingAd) {
-            println("⚠️ No SCTE-35 markers detected in stream, using simulated ad breaks for demo")
-            
-            while (isActive) {
-                val currentPosition = exoPlayer.currentPosition
-                
-                // Simulate ad breaks at specific positions (30s, 90s, 150s)
-                val adBreakPositions = listOf(30000L, 90000L, 150000L)
-                
-                for (breakPosition in adBreakPositions) {
-                    if (currentPosition >= breakPosition && 
-                        currentPosition < breakPosition + 1000 && 
-                        !triggeredAdPositions.contains(breakPosition) &&
-                        !isPlayingAd) {
-                        
-                        println("🎬 Simulated ad break at ${breakPosition}ms")
-                        triggeredAdPositions = triggeredAdPositions + breakPosition
-                        
-                        val adUrls = AdVideoPlayer.getSampleAdUrls()
-                        adVideoPlayer.playAdBreak(adUrls) {
-                            println("✅ Simulated ad break complete")
-                        }
-                        break
+    // Note: This uses a pure stateless scheduler that doesn't depend on LaunchedEffect lifecycle
+    val adBreakScheduler = remember { SimulatedAdBreakScheduler() }
+
+    LaunchedEffect(contentPlayer) {
+        // Track triggered positions locally within this LaunchedEffect
+        // This prevents race conditions during async state updates
+        val localTriggeredPositions = mutableSetOf<Long>()
+
+        println("🔍 Simulated ad break scheduler started")
+
+        // Periodically check if we should trigger an ad break (every 500ms)
+        while (true) {
+            delay(500)
+
+            val currentPosition = contentPlayer.currentPosition
+
+            val adBreakPosition = adBreakScheduler.calculateAdBreakPosition(
+                currentPosition = currentPosition,
+                triggeredPositions = localTriggeredPositions,
+                isPlayingAd = state.isPlayingAd,
+                scte35Detected = state.scte35MarkersDetected
+            )
+
+            if (adBreakPosition != null) {
+                println("⚠️ No SCTE-35 markers detected in stream, using simulated ad breaks for demo")
+                println("🎬 Simulated ad break at ${adBreakPosition}ms")
+
+                // Mark as triggered locally IMMEDIATELY (synchronous)
+                localTriggeredPositions.add(adBreakPosition)
+
+                println("🚀 Calling playAdBreak...")
+                // Actually play the ads
+                val adUrls = AdVideoPlayer.getSampleAdUrls()
+                adVideoPlayer.playAdBreak(
+                    adUrls = adUrls,
+                    onAdBreakComplete = {
+                        println("✅ Simulated ad break complete")
                     }
-                }
-                
-                delay(500)
+                )
             }
         }
     }
-    
+
     // Cleanup on dispose
     DisposableEffect(video.id) {
         onDispose {
             adVideoPlayer.release()
-            exoPlayer.release()
+            contentPlayer.release()
         }
     }
-    
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -239,7 +267,7 @@ private fun Scte35PlayerScreenContent(
                 AndroidView(
                     factory = { ctx ->
                         PlayerView(ctx).apply {
-                            player = exoPlayer
+                            player = contentPlayer
                             useController = true
                             layoutParams = FrameLayout.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -249,16 +277,16 @@ private fun Scte35PlayerScreenContent(
                     },
                     modifier = Modifier.fillMaxSize()
                 )
-                
+
                 // Ad indicator when playing ads
-                if (isPlayingAd) {
+                if (state.isPlayingAd) {
                     Scte35AdIndicator(
-                        currentAdIndex = currentAdIndex,
-                        totalAds = totalAds
+                        currentAdIndex = state.currentAdIndex,
+                        totalAds = state.totalAds
                     )
                 }
             }
-            
+
             // Information section
             Column(
                 modifier = Modifier
@@ -271,22 +299,23 @@ private fun Scte35PlayerScreenContent(
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
-                
+
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 Text(
                     video.description,
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.8f)
                 )
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
                 // Test Ad Button
-                if (!isPlayingAd) {
+                if (!state.isPlayingAd) {
                     Button(
                         onClick = {
                             println("🧪 Manual ad test triggered")
+                            onIntent(Scte35Intent.ManualAdBreakRequested)
                             val adUrls = AdVideoPlayer.getSampleAdUrls()
                             adVideoPlayer.playAdBreak(adUrls) {
                                 println("✅ Test ad complete")
@@ -299,14 +328,14 @@ private fun Scte35PlayerScreenContent(
                     ) {
                         Text("🧪 Test Ad Now (Manual Trigger)")
                     }
-                    
+
                     Spacer(modifier = Modifier.height(16.dp))
                 }
-                
+
                 // SCTE-35 Info Card
                 Scte35InfoCard(
-                    isPlayingAd = isPlayingAd,
-                    scte35Detected = scte35MarkersDetected
+                    isPlayingAd = state.isPlayingAd,
+                    scte35Detected = state.scte35MarkersDetected
                 )
             }
         }
@@ -376,9 +405,9 @@ fun Scte35InfoCard(isPlayingAd: Boolean, scte35Detected: Boolean) {
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
-            
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             // SCTE-35 Detection Status
             Text(
                 if (scte35Detected) {
@@ -390,18 +419,18 @@ fun Scte35InfoCard(isPlayingAd: Boolean, scte35Detected: Boolean) {
                 fontWeight = FontWeight.Bold,
                 color = if (scte35Detected) Color(0xFF4CAF50) else Color(0xFFFFA726)
             )
-            
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             Text(
                 "How it works:",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = Color.White.copy(alpha = 0.9f)
             )
-            
+
             Spacer(modifier = Modifier.height(8.dp))
-            
+
             if (scte35Detected) {
                 InfoBullet("1. Stream contains real SCTE-35 markers")
                 InfoBullet("2. ExoPlayer detects markers automatically")
@@ -414,9 +443,9 @@ fun Scte35InfoCard(isPlayingAd: Boolean, scte35Detected: Boolean) {
                 InfoBullet("Real ads play (not overlays)")
                 InfoBullet("Content resumes after ads")
             }
-            
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             Text(
                 if (isPlayingAd) {
                     "🔴 Currently Playing Ad Video"

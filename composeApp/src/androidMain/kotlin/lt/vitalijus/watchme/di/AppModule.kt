@@ -13,7 +13,8 @@ import lt.vitalijus.watchme.domain.usecase.GetVideosUseCase
 import lt.vitalijus.watchme.domain.usecase.RefreshVideosUseCase
 import lt.vitalijus.watchme.domain.usecase.SearchVideosUseCase
 import lt.vitalijus.watchme.ui.browse.BrowseViewModel
-import lt.vitalijus.watchme.ui.player.PlayerViewModel
+import lt.vitalijus.watchme.ui.scte35_player.Scte35PlayerViewModel
+import lt.vitalijus.watchme.ui.standard_player.PlayerViewModel
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
 
@@ -67,6 +68,12 @@ val presentationModule = module {
 
     viewModel {
         PlayerViewModel()
+    }
+
+    viewModel {
+        Scte35PlayerViewModel(
+            getVideoByIdUseCase = get()
+        )
     }
 
     // Add more ViewModels as you migrate:

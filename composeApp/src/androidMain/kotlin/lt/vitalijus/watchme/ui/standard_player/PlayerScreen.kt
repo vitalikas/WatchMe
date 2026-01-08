@@ -1,4 +1,4 @@
-package lt.vitalijus.watchme.ui.player
+package lt.vitalijus.watchme.ui.standard_player
 
 import android.content.Context
 import android.view.ViewGroup
@@ -64,8 +64,8 @@ import lt.vitalijus.watchme.data.repository.KtorVideoRemoteDataSource
 import lt.vitalijus.watchme.analytics.VideoAnalyticsTracker
 import lt.vitalijus.watchme.domain.model.Video
 import lt.vitalijus.watchme.streaming.LinearAdReplacementManager
-import lt.vitalijus.watchme.ui.player.components.AdIndicatorOverlay
-import lt.vitalijus.watchme.ui.player.components.TechnicalInfoCard
+import lt.vitalijus.watchme.ui.standard_player.components.AdIndicatorOverlay
+import lt.vitalijus.watchme.ui.standard_player.components.TechnicalInfoCard
 import org.koin.androidx.compose.koinViewModel
 
 /**

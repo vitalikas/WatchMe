@@ -1,4 +1,4 @@
-package lt.vitalijus.watchme.ui.player
+package lt.vitalijus.watchme.ui.standard_player
 
 import lt.vitalijus.watchme.architecture.UiEffect
 import lt.vitalijus.watchme.architecture.UiIntent
