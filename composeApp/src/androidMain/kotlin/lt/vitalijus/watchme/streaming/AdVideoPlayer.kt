@@ -71,9 +71,12 @@ class AdVideoPlayer(
         contentPlaybackPosition = player.currentPosition
         contentPlayWhenReady = player.playWhenReady
 
-        _isPlayingAd.value = true
+        // Update ad state in correct order (isPlayingAd last to trigger flow emission)
         _totalAds.value = adUrls.size
         _currentAdIndex.value = 0
+        _isPlayingAd.value = true
+
+        println("🎬 Ad state set: isPlayingAd=${_isPlayingAd.value}, total=${_totalAds.value}, index=${_currentAdIndex.value}")
 
         // Create playlist of ad videos
         val adMediaItems = adUrls.map { url ->
@@ -89,12 +92,14 @@ class AdVideoPlayer(
         }
 
         // Track ad progress and completion
+        var seekingToNextAd = false
         val adListener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 // Update current ad index when transitioning between ads
                 if (_isPlayingAd.value) {
                     _currentAdIndex.value = player.currentMediaItemIndex
                     println("📺 Now playing ad ${_currentAdIndex.value + 1}/${_totalAds.value}")
+                    seekingToNextAd = false
                 }
             }
 
@@ -103,6 +108,20 @@ class AdVideoPlayer(
                     println("✅ All ads completed, returning to content")
                     player.removeListener(this)
                     resumeContent(onComplete = onAdBreakComplete)
+                }
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int
+            ) {
+                // Block manual seeks during ad playback (but allow automatic transitions)
+                if (_isPlayingAd.value && reason == Player.DISCONTINUITY_REASON_SEEK && !seekingToNextAd) {
+                    println("🚫 Seek attempt blocked during ad playback")
+                    // Seek back to the beginning of the current ad to prevent skipping
+                    seekingToNextAd = true
+                    player.seekToDefaultPosition()
                 }
             }
         }

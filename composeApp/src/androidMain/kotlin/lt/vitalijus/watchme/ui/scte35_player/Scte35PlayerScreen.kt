@@ -3,6 +3,7 @@ package lt.vitalijus.watchme.ui.scte35_player
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -11,10 +12,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -25,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -32,7 +38,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -42,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -125,6 +134,12 @@ private fun Scte35PlayerScreenContent(
     // Create Ad Video Player manager
     val adVideoPlayer = remember { AdVideoPlayer(context = context) }
 
+    // Track player's play/pause state for the button
+    var isPlaying by remember { mutableStateOf(true) }
+
+    // Track controls visibility (shown when tapping player area)
+    var showAdControls by remember { mutableStateOf(false) }
+
     // Observe ad playback state and sync with ViewModel
     LaunchedEffect(adVideoPlayer) { // Key to the player object itself
         // Combine all relevant StateFlows from AdVideoPlayer.
@@ -189,6 +204,37 @@ private fun Scte35PlayerScreenContent(
         }
 
         player
+    }
+
+    // Observe player playback state to update pause/play button
+    LaunchedEffect(Unit) {
+        val listener = object : Player.Listener {
+            override fun onPlayWhenReadyChanged(
+                playWhenReady: Boolean,
+                reason: Int
+            ) {
+                isPlaying = playWhenReady
+            }
+        }
+        contentPlayer.addListener(listener)
+
+        // Initialize state
+        isPlaying = contentPlayer.playWhenReady
+    }
+
+    // Auto-hide controls after 3 seconds when shown (during ad playback)
+    LaunchedEffect(showAdControls, state.isPlayingAd) {
+        if (showAdControls && state.isPlayingAd) {
+            delay(3000)
+            showAdControls = false
+        }
+    }
+
+    // Show controls when ad starts playing
+    LaunchedEffect(state.isPlayingAd) {
+        if (state.isPlayingAd) {
+            showAdControls = true
+        }
     }
 
     // Fallback: Simulate ad breaks at specific positions if no real SCTE-35 markers detected
@@ -276,17 +322,26 @@ private fun Scte35PlayerScreenContent(
                     .fillMaxWidth()
                     .aspectRatio(ratio = 16f / 9f)
                     .background(color = Color.Black)
+                    .clickable {
+                        // Toggle controls visibility when tapping on player area
+                        if (state.isPlayingAd) {
+                            showAdControls = !showAdControls
+                        }
+                    }
             ) {
                 AndroidView(
                     factory = { ctx ->
                         PlayerView(ctx).apply {
                             player = contentPlayer
-                            useController = true
+                            useController = !state.isPlayingAd // Hide controller during ads
                             layoutParams = FrameLayout.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT
                             )
                         }
+                    },
+                    update = { playerView ->
+                        playerView.useController = !state.isPlayingAd // Update controller state
                     },
                     modifier = Modifier.fillMaxSize()
                 )
@@ -297,6 +352,42 @@ private fun Scte35PlayerScreenContent(
                         currentAdIndex = state.currentAdIndex,
                         totalAds = state.totalAds
                     )
+
+                    // Play/Pause button for ads (centered overlay) - only visible when tapped
+                    if (showAdControls) {
+                        Surface(
+                            modifier = Modifier
+                                .size(size = 64.dp)
+                                .align(alignment = Alignment.Center)
+                                .clickable {
+                                    val newState = !isPlaying
+                                    contentPlayer.playWhenReady = newState
+                                    isPlaying = newState
+                                },
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.6f)
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (isPlaying) {
+                                        Icons.Default.Pause
+                                    } else {
+                                        Icons.Default.PlayArrow
+                                    },
+                                    contentDescription = if (isPlaying) {
+                                        "Pause Ad"
+                                    } else {
+                                        "Play Ad"
+                                    },
+                                    tint = Color.White,
+                                    modifier = Modifier.size(size = 32.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
