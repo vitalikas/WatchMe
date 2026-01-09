@@ -28,7 +28,7 @@ class Scte35PlayerViewModel(
             is Scte35Intent.LoadVideo -> loadVideo(videoId = intent.videoId)
             is Scte35Intent.SimulateAdBreakAt -> triggerSimulatedAdBreak(position = intent.position)
             is Scte35Intent.ManualAdBreakRequested -> {
-                /* Ad logic handled by AdVideoPlayer */
+
             }
 
             is Scte35Intent.AdPlaybackStateChanged -> updateAdPlaybackState(
@@ -38,6 +38,8 @@ class Scte35PlayerViewModel(
             )
 
             is Scte35Intent.Scte35MarkerFound -> markScte35Detected()
+            is Scte35Intent.SavePlaybackPosition -> savePosition(position = intent.position)
+            is Scte35Intent.SaveAdState -> saveAdState(state = intent)
         }
     }
 
@@ -88,5 +90,20 @@ class Scte35PlayerViewModel(
 
     private fun markScte35Detected() {
         setState { copy(scte35MarkersDetected = true) }
+    }
+
+    private fun savePosition(position: Long) {
+        if (position > 0) {
+            setState { copy(playbackPosition = position) }
+        }
+    }
+
+    private fun saveAdState(state: Scte35Intent.SaveAdState) {
+        setState {
+            copy(
+                adPlaybackPosition = state.adPosition,
+                adIndexToPlay = state.adIndex
+            )
+        }
     }
 }

@@ -42,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -136,14 +137,14 @@ private fun Scte35PlayerScreenContent(
     // Create Ad Video Player manager
     val adVideoPlayer = remember { AdVideoPlayer(context = context) }
 
-    // Track player's play/pause state for the button
-    var isPlaying by remember { mutableStateOf(true) }
+    // Track player's play/pause state for the button (when playing ad)
+    var isPlaying by rememberSaveable { mutableStateOf(true) }
 
-    // Track controls visibility (shown when tapping player area)
-    var showAdControls by remember { mutableStateOf(false) }
+    // Track controls visibility (shown when tapping player area and playing ad)
+    var showAdControls by rememberSaveable { mutableStateOf(false) }
 
     // Track ad progress (0f to 1f)
-    var adProgress by remember { mutableFloatStateOf(0f) }
+    var adProgress by rememberSaveable { mutableFloatStateOf(0f) }
 
     // Observe ad playback state and sync with ViewModel
     LaunchedEffect(adVideoPlayer) { // Key to the player object itself
@@ -169,6 +170,15 @@ private fun Scte35PlayerScreenContent(
         }
     }
 
+    val startAdBreak: (List<String>) -> Unit = { adUrls ->
+        adVideoPlayer.playAdBreak(
+            adUrls = adUrls,
+            startAtAdIndex = state.adIndexToPlay,
+            startAtAdPosition = state.adPlaybackPosition,
+            onAdBreakComplete = { }
+        )
+    }
+
     // Create ExoPlayer with SCTE-35 support
     val contentPlayer = remember(video.id) {
         val player = ExoPlayer.Builder(context).build()
@@ -191,9 +201,7 @@ private fun Scte35PlayerScreenContent(
                 val adUrls = AdVideoPlayer.getSampleAdUrls()
 
                 // Play ad videos
-                adVideoPlayer.playAdBreak(adUrls = adUrls) {
-                    println("✅ Ad break complete, resumed content")
-                }
+                startAdBreak(adUrls)
             },
             onAdBreakEnd = {
                 // SCTE-35 signaled return to content
@@ -204,6 +212,7 @@ private fun Scte35PlayerScreenContent(
         with(player) {
             addListener(scte35Handler)
             setMediaItem(mediaItem)
+            seekTo(state.playbackPosition)
             prepare()
             playWhenReady = true
         }
@@ -295,6 +304,8 @@ private fun Scte35PlayerScreenContent(
                 val adUrls = AdVideoPlayer.getSampleAdUrls()
                 adVideoPlayer.playAdBreak(
                     adUrls = adUrls,
+                    startAtAdIndex = state.adIndexToPlay,
+                    startAtAdPosition = state.adPlaybackPosition,
                     onAdBreakComplete = {
                         println("✅ Simulated ad break complete")
                     }
@@ -306,10 +317,23 @@ private fun Scte35PlayerScreenContent(
     // Cleanup on dispose
     DisposableEffect(video.id) {
         onDispose {
+            if (state.isPlayingAd) {
+                onIntent(
+                    Scte35Intent.SaveAdState(
+                        adPosition = contentPlayer.currentPosition,
+                        adIndex = state.currentAdIndex
+                    )
+                )
+            } else {
+                onIntent(Scte35Intent.SavePlaybackPosition(position = contentPlayer.currentPosition))
+            }
+
+            // Release resources
             adVideoPlayer.release()
             contentPlayer.release()
         }
     }
+
 
     Scaffold(
         topBar = {
@@ -459,9 +483,7 @@ private fun Scte35PlayerScreenContent(
                             println("🧪 Manual ad test triggered")
                             onIntent(Scte35Intent.ManualAdBreakRequested)
                             val adUrls = AdVideoPlayer.getSampleAdUrls()
-                            adVideoPlayer.playAdBreak(adUrls) {
-                                println("✅ Test ad complete")
-                            }
+                            startAdBreak(adUrls)
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(

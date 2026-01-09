@@ -29,6 +29,8 @@ class AdVideoPlayer(
     private var contentMediaItem: MediaItem? = null
     private var contentPlaybackPosition: Long = 0
     private var contentPlayWhenReady: Boolean = true
+    var currentAdUrls: List<String> = emptyList()
+        private set
 
     private val _isPlayingAd = MutableStateFlow(false)
     val isPlayingAd: StateFlow<Boolean> = _isPlayingAd.asStateFlow()
@@ -47,11 +49,10 @@ class AdVideoPlayer(
         this.contentMediaItem = mediaItem
     }
 
-    /**
-     * Play an ad break with multiple ad videos
-     */
     fun playAdBreak(
         adUrls: List<String>,
+        startAtAdIndex: Int = 0,
+        startAtAdPosition: Long = 0L,
         onAdBreakComplete: () -> Unit
     ) {
         val player = mainPlayer ?: run {
@@ -65,15 +66,21 @@ class AdVideoPlayer(
             return
         }
 
-        println("🎬 Starting ad break with ${adUrls.size} ads")
+        // Only save content position if we are starting a fresh ad break
+        if (!_isPlayingAd.value) {
+            println("🎬 Starting fresh ad break with ${adUrls.size} ads")
+            contentPlaybackPosition = player.currentPosition
+            contentPlayWhenReady = player.playWhenReady
+        } else {
+            println("🎬 Resuming ad break at ad $startAtAdIndex, position ${startAtAdPosition}ms")
+        }
 
-        // Save current content state
-        contentPlaybackPosition = player.currentPosition
-        contentPlayWhenReady = player.playWhenReady
+
+        this.currentAdUrls = adUrls
 
         // Update ad state in correct order (isPlayingAd last to trigger flow emission)
         _totalAds.value = adUrls.size
-        _currentAdIndex.value = 0
+        _currentAdIndex.value = startAtAdIndex
         _isPlayingAd.value = true
 
         println("🎬 Ad state set: isPlayingAd=${_isPlayingAd.value}, total=${_totalAds.value}, index=${_currentAdIndex.value}")
@@ -95,7 +102,6 @@ class AdVideoPlayer(
         var seekingToNextAd = false
         val adListener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                // Update current ad index when transitioning between ads
                 if (_isPlayingAd.value) {
                     _currentAdIndex.value = player.currentMediaItemIndex
                     println("📺 Now playing ad ${_currentAdIndex.value + 1}/${_totalAds.value}")
@@ -116,22 +122,23 @@ class AdVideoPlayer(
                 newPosition: Player.PositionInfo,
                 reason: Int
             ) {
-                // Block manual seeks during ad playback (but allow automatic transitions)
+                // This logic is to prevent users from manually scrubbing/skipping ads
                 if (_isPlayingAd.value && reason == Player.DISCONTINUITY_REASON_SEEK && !seekingToNextAd) {
                     println("🚫 Seek attempt blocked during ad playback")
-                    // Seek back to the beginning of the current ad to prevent skipping
                     seekingToNextAd = true
-                    player.seekToDefaultPosition()
+                    // We seek to the same position to effectively cancel the user's seek
+                    player.seekTo(newPosition.mediaItemIndex, oldPosition.positionMs)
                 }
             }
         }
 
         // Play ads
         with(player) {
+            removeListener(adListener)
             addListener(adListener)
             setMediaSource(concatenatingMediaSource)
             prepare()
-            seekTo(0, 0) // Start from beginning of first ad
+            seekTo(startAtAdIndex, startAtAdPosition)
             playWhenReady = true
         }
     }
@@ -143,9 +150,11 @@ class AdVideoPlayer(
         val player = mainPlayer ?: return
         val mediaItem = contentMediaItem ?: return
 
+        // Clear ad state
         _isPlayingAd.value = false
         _currentAdIndex.value = 0
         _totalAds.value = 0
+        this.currentAdUrls = emptyList()
 
         println("🎯 Resuming content at position ${contentPlaybackPosition}ms")
 
@@ -177,6 +186,7 @@ class AdVideoPlayer(
         mainPlayer = null
         contentMediaItem = null
         _isPlayingAd.value = false
+        currentAdUrls = emptyList()
     }
 
     /**
@@ -184,7 +194,6 @@ class AdVideoPlayer(
      */
     companion object {
         fun getSampleAdUrls(): List<String> = listOf(
-            // Sample ad videos (Google's test videos)
             "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
             "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
         )
